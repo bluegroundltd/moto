@@ -1,6 +1,7 @@
 import datetime
 import json
 import re
+import os
 
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional
@@ -8,6 +9,12 @@ from moto.core import BaseBackend, BackendDict, BaseModel
 from moto.core.utils import iso_8601_datetime_with_milliseconds
 from .exceptions import InvalidNameException, ResourceNotFoundError
 from .utils import get_random_identity_id
+from .utils import get_static_identity_pool_id
+
+
+COGNITO_STATIC_IDENTITY_POOL_ID = os.getenv("COGNITO_STATIC_IDENTITY_POOL_ID")
+COGNITO_STATIC_IDENTITY_POOL_NAME = os.getenv("COGNITO_STATIC_IDENTITY_POOL_NAME")
+COGNITO_STATIC_IDENTITY_DEVELOPER_PROVIDER_NAME = os.getenv("COGNITO_STATIC_IDENTITY_DEVELOPER_PROVIDER_NAME")
 
 
 class CognitoIdentityPool(BaseModel):
@@ -28,7 +35,11 @@ class CognitoIdentityPool(BaseModel):
         self.cognito_identity_providers = kwargs.get("cognito_identity_providers", [])
         self.saml_provider_arns = kwargs.get("saml_provider_arns", [])
 
-        self.identity_pool_id = get_random_identity_id(region)
+        if kwargs.get("static_id", False):
+            self.identity_pool_id = get_static_identity_pool_id(region, COGNITO_STATIC_IDENTITY_POOL_ID)
+        else:
+            self.identity_pool_id = get_random_identity_id(region)
+
         self.creation_time = datetime.datetime.utcnow()
 
         self.tags = kwargs.get("tags") or {}
@@ -54,6 +65,16 @@ class CognitoIdentityBackend(BaseBackend):
         super().__init__(region_name, account_id)
         self.identity_pools: Dict[str, CognitoIdentityPool] = OrderedDict()
         self.pools_identities: Dict[str, Dict[str, Any]] = {}
+        self.create_identity_pool(
+            COGNITO_STATIC_IDENTITY_POOL_NAME,
+            False,
+            {},
+            COGNITO_STATIC_IDENTITY_DEVELOPER_PROVIDER_NAME,
+            [],
+            [],
+            [],
+            True
+        )
 
     def describe_identity_pool(self, identity_pool_id: str) -> str:
         identity_pool = self.identity_pools.get(identity_pool_id, None)
@@ -73,6 +94,7 @@ class CognitoIdentityBackend(BaseBackend):
         cognito_identity_providers: List[Dict[str, Any]],
         saml_provider_arns: List[str],
         tags: Dict[str, str],
+        static_id: bool = False
     ) -> str:
         new_identity = CognitoIdentityPool(
             self.region_name,
@@ -84,6 +106,7 @@ class CognitoIdentityBackend(BaseBackend):
             cognito_identity_providers=cognito_identity_providers,
             saml_provider_arns=saml_provider_arns,
             tags=tags,
+            static_id=static_id,
         )
         self.identity_pools[new_identity.identity_pool_id] = new_identity
         self.pools_identities.update(
