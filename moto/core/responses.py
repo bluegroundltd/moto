@@ -300,7 +300,10 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
         self.headers = request.headers
         if "host" not in self.headers:
             self.headers["host"] = urlparse(full_url).netloc
-        self.response_headers = {"server": "amazon.com"}
+        # This modification is needed because AWS SDK is crashing on a dummy Map
+        # merger due to the duplicate existence of 'Server' & 'server' keys in the
+        # same case-insentive Map.
+        self.response_headers = {}
 
         # Register visit with IAM
         from moto.iam.models import mark_account_as_visited
